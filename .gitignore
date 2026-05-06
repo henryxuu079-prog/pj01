@@ -1,9 +1,9 @@
 # Xcode
-*.xcuserdata
-*.xcworkspace/xcuserdata
-DerivedData/
+**/xcuserdata/
+*.xcuserstate
 *.xcresult
 *.xcresultbundle
+DerivedData/
 
 # Swift Package Manager
 .build/
