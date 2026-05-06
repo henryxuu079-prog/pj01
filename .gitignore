@@ -1,0 +1,24 @@
+# Xcode
+*.xcuserdata
+*.xcworkspace/xcuserdata
+DerivedData/
+*.xcresult
+*.xcresultbundle
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods
+Pods/
+
+# macOS
+.DS_Store
+Thumbs.db
+*.swp
+
+# App artifacts
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM
