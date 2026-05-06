@@ -82,6 +82,9 @@ struct PosterStylePicker: View {
         photo.posterFontName = fontName.isEmpty ? nil : fontName
         photo.posterTextColorHex = colorHex
         photo.posterFrameStyle = frameStyle.isEmpty ? nil : frameStyle
+        if photo.posterText != nil {
+            photo.isPoster = true
+        }
         dismiss()
     }
 }

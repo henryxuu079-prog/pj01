@@ -14,17 +14,26 @@ struct RecordDetailView: View {
     @State private var showShareSheet = false
     @State private var sharePhoto: PhotoItem?
 
-    enum DisplayMode: String, CaseIterable {
-        case grid = "常规"
-        case poster = "海报"
+    enum DisplayMode: String {
+        case grid, poster
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             VStack(alignment: .leading, spacing: 4) {
-                Text(record.title)
-                    .font(.title2.bold())
+                HStack(alignment: .firstTextBaseline) {
+                    Text(record.title)
+                        .font(.title2.bold())
+                    Spacer()
+                    // Mode toggle buttons
+                    HStack(spacing: 0) {
+                        modeButton(.grid, icon: "square.grid.2x2", label: "常规")
+                        modeButton(.poster, icon: "rectangle.portrait.on.rectangle.portrait", label: "海报")
+                    }
+                    .background(.quaternary.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
                 if let desc = record.recordDescription {
                     Text(desc)
                         .font(.body)
@@ -36,36 +45,28 @@ struct RecordDetailView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)
             .padding(.top, 8)
-
-            // Mode picker
-            Picker("显示模式", selection: $displayMode) {
-                ForEach(DisplayMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
 
             // Content
             if record.photos.isEmpty {
                 ContentUnavailableView(
                     "没有照片",
                     systemImage: "photo.on.rectangle.angled",
-                    description: Text("点击右上角 + 添加照片")
+                    description: Text("点击右上角铅笔图标添加照片")
                 )
             } else {
                 switch displayMode {
                 case .grid:
                     photoGridView
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 case .poster:
                     posterView
+                        .transition(.opacity.combined(with: .scale(scale: 1.05)))
                 }
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: displayMode)
         .navigationTitle("")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -82,11 +83,6 @@ struct RecordDetailView: View {
         .sheet(isPresented: $showPosterEditor) {
             if let photo = selectedPhoto {
                 PosterStylePicker(photo: photo)
-                    .onDisappear {
-                        if photo.posterText != nil {
-                            photo.isPoster = true
-                        }
-                    }
             }
         }
         .sheet(isPresented: $showRecordEditor) {
@@ -106,6 +102,26 @@ struct RecordDetailView: View {
         }
     }
 
+    // MARK: - Mode Button
+
+    private func modeButton(_ mode: DisplayMode, icon: String, label: String) -> some View {
+        Button {
+            withAnimation { displayMode = mode }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.medium))
+                Text(label)
+                    .font(.caption)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(displayMode == mode ? .blue : .clear)
+            .foregroundStyle(displayMode == mode ? .white : .secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Grid Mode
 
     private var photoGridView: some View {
@@ -113,7 +129,7 @@ struct RecordDetailView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 140), spacing: 4)], spacing: 4) {
                 ForEach(record.photos) { photo in
                     ZStack(alignment: .topTrailing) {
-                        thumbnailView(for: photo)
+                        gridThumbnail(for: photo)
                             .aspectRatio(1, contentMode: .fill)
                             .clipShape(Rectangle())
                             .contextMenu {
@@ -133,12 +149,11 @@ struct RecordDetailView: View {
                                 } label: {
                                     Label("分享照片", systemImage: "square.and.arrow.up")
                                 }
-                                if !photo.isPoster {
-                                    Button {
-                                        makePoster(photo)
-                                    } label: {
-                                        Label("设为海报", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                                    }
+                                Button {
+                                    detailPhoto = photo
+                                    makePoster(photo)
+                                } label: {
+                                    Label(photo.isPoster ? "编辑海报" : "设为海报", systemImage: "rectangle.portrait.on.rectangle.portrait")
                                 }
                                 Button(role: .destructive) {
                                     deletePhoto(photo)
@@ -147,27 +162,33 @@ struct RecordDetailView: View {
                                 }
                             }
 
-                        // Poster badge
-                        if photo.isPoster {
-                            Image(systemName: "star.fill")
+                        // Tappable poster badge
+                        Button {
+                            if photo.isPoster {
+                                photo.isPoster = false
+                            } else {
+                                makePoster(photo)
+                            }
+                        } label: {
+                            Image(systemName: photo.isPoster ? "star.fill" : "star")
                                 .font(.system(size: 10))
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(photo.isPoster ? .yellow : .secondary.opacity(0.4))
                                 .padding(4)
                                 .background(.ultraThinMaterial)
                                 .clipShape(Circle())
-                                .padding(3)
                         }
+                        .padding(3)
 
-                        // Delete button overlay
+                        // Delete overlay
                         Button {
                             deletePhoto(photo)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.white, .black.opacity(0.4))
+                                .font(.system(size: 16))
+                                .foregroundStyle(.white, .black.opacity(0.3))
                         }
                         .padding(2)
-                        .opacity(0.6)
+                        .opacity(0.5)
                     }
                 }
             }
@@ -175,15 +196,26 @@ struct RecordDetailView: View {
         }
     }
 
-    private func thumbnailView(for photo: PhotoItem) -> some View {
+    @ViewBuilder
+    private func gridThumbnail(for photo: PhotoItem) -> some View {
         if let thumbPath = photo.thumbnailImagePath,
            let image = FileStorageManager.shared.loadImage(from: thumbPath) {
-            return AnyView(image.resizable())
+            image.resizable()
+        } else {
+            // No thumbnail yet — show placeholder, trigger generation
+            Rectangle()
+                .fill(.quaternary)
+                .overlay {
+                    Image(systemName: "photo")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .task {
+                    if let thumbPath = try? FileStorageManager.shared.generateThumbnail(for: photo.originalImagePath) {
+                        await MainActor.run { photo.thumbnailImagePath = thumbPath }
+                    }
+                }
         }
-        if let image = FileStorageManager.shared.loadImage(from: photo.originalImagePath) {
-            return AnyView(image.resizable())
-        }
-        return AnyView(Rectangle().fill(.quaternary))
     }
 
     // MARK: - Poster Mode
@@ -193,9 +225,51 @@ struct RecordDetailView: View {
         let displayPhotos = posterPhotos.isEmpty ? record.photos : posterPhotos
 
         return ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 20) {
+                if posterPhotos.isEmpty {
+                    HStack {
+                        Image(systemName: "info.circle")
+                        Text("未标记海报，显示全部照片。点击照片上的 ☆ 设为海报")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                }
+
                 ForEach(displayPhotos) { photo in
-                    PosterCanvasView(photo: photo)
+                    VStack(spacing: 4) {
+                        PosterCanvasView(photo: photo)
+
+                        // Edit button for poster
+                        HStack(spacing: 12) {
+                            Button {
+                                makePoster(photo)
+                            } label: {
+                                Label("编辑文字", systemImage: "pencil")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+
+                            if !photo.isPoster {
+                                Button {
+                                    photo.isPoster = true
+                                } label: {
+                                    Label("设为海报", systemImage: "star")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            Button {
+                                detailPhoto = photo
+                                showPhotoDetail = true
+                            } label: {
+                                Label("详情", systemImage: "info.circle")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
                 }
             }
             .padding(.vertical, 8)
