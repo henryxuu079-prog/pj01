@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 
 struct TravelEditorView: View {
+    var existingTravel: Travel?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -9,6 +11,8 @@ struct TravelEditorView: View {
     @State private var startDate: Date?
     @State private var endDate: Date?
     @State private var summary = ""
+
+    var isEditing: Bool { existingTravel != nil }
 
     var body: some View {
         NavigationStack {
@@ -32,7 +36,7 @@ struct TravelEditorView: View {
                 }
             }
             .datePickerStyle(.graphical)
-            .navigationTitle("新建旅行")
+            .navigationTitle(isEditing ? "编辑旅行" : "新建旅行")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -42,13 +46,30 @@ struct TravelEditorView: View {
                         .disabled(title.isEmpty)
                 }
             }
+            .onAppear(perform: loadExisting)
         }
     }
 
+    private func loadExisting() {
+        guard let travel = existingTravel else { return }
+        title = travel.title
+        startDate = travel.startDate
+        endDate = travel.endDate
+        summary = travel.summary ?? ""
+    }
+
     private func save() {
-        let travel = Travel(title: title, startDate: startDate, endDate: endDate)
-        travel.summary = summary.isEmpty ? nil : summary
-        modelContext.insert(travel)
+        if let travel = existingTravel {
+            travel.title = title
+            travel.startDate = startDate
+            travel.endDate = endDate
+            travel.summary = summary.isEmpty ? nil : summary
+            travel.updatedAt = Date()
+        } else {
+            let travel = Travel(title: title, startDate: startDate, endDate: endDate)
+            travel.summary = summary.isEmpty ? nil : summary
+            modelContext.insert(travel)
+        }
         dismiss()
     }
 }

@@ -8,6 +8,11 @@ struct RecordDetailView: View {
     @State private var displayMode: DisplayMode = .grid
     @State private var selectedPhoto: PhotoItem?
     @State private var showPosterEditor = false
+    @State private var showRecordEditor = false
+    @State private var showPhotoDetail = false
+    @State private var detailPhoto: PhotoItem?
+    @State private var showShareSheet = false
+    @State private var sharePhoto: PhotoItem?
 
     enum DisplayMode: String, CaseIterable {
         case grid = "常规"
@@ -65,6 +70,15 @@ struct RecordDetailView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showRecordEditor = true
+                } label: {
+                    Label("编辑记录", systemImage: "pencil")
+                }
+            }
+        }
         .sheet(isPresented: $showPosterEditor) {
             if let photo = selectedPhoto {
                 PosterStylePicker(photo: photo)
@@ -73,6 +87,21 @@ struct RecordDetailView: View {
                             photo.isPoster = true
                         }
                     }
+            }
+        }
+        .sheet(isPresented: $showRecordEditor) {
+            RecordEditorView(existingRecord: record)
+        }
+        .sheet(isPresented: $showPhotoDetail) {
+            if let photo = detailPhoto {
+                PhotoDetailView(photo: photo)
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let photo = sharePhoto, let url = ShareService.shared.tempURL(for: photo) {
+                #if os(iOS)
+                ShareSheetView(items: [url])
+                #endif
             }
         }
     }
@@ -88,6 +117,22 @@ struct RecordDetailView: View {
                             .aspectRatio(1, contentMode: .fill)
                             .clipShape(Rectangle())
                             .contextMenu {
+                                Button {
+                                    detailPhoto = photo
+                                    showPhotoDetail = true
+                                } label: {
+                                    Label("查看详情", systemImage: "info.circle")
+                                }
+                                Button {
+                                    sharePhoto = photo
+                                    #if os(macOS)
+                                    ShareService.shared.showSharePicker(for: photo)
+                                    #else
+                                    showShareSheet = true
+                                    #endif
+                                } label: {
+                                    Label("分享照片", systemImage: "square.and.arrow.up")
+                                }
                                 if !photo.isPoster {
                                     Button {
                                         makePoster(photo)

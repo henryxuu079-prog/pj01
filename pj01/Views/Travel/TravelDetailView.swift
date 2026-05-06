@@ -6,6 +6,7 @@ struct TravelDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var showRecordEditor = false
+    @State private var showTravelEditor = false
 
     var sortedRecords: [TravelRecord] {
         travel.records.sorted { $0.sortOrder < $1.sortOrder }
@@ -41,15 +42,27 @@ struct TravelDetailView: View {
         .navigationTitle(travel.title)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showRecordEditor = true
+                Menu {
+                    Button {
+                        showTravelEditor = true
+                    } label: {
+                        Label("编辑旅行", systemImage: "pencil")
+                    }
+                    Button {
+                        showRecordEditor = true
+                    } label: {
+                        Label("添加记录", systemImage: "plus")
+                    }
                 } label: {
-                    Label("添加记录", systemImage: "plus")
+                    Label("更多", systemImage: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showRecordEditor) {
             RecordEditorView(travel: travel)
+        }
+        .sheet(isPresented: $showTravelEditor) {
+            TravelEditorView(existingTravel: travel)
         }
     }
 

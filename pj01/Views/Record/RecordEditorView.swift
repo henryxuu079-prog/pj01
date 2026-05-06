@@ -3,7 +3,8 @@ import SwiftData
 import PhotosUI
 
 struct RecordEditorView: View {
-    let travel: Travel
+    var travel: Travel?
+    var existingRecord: TravelRecord?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -17,6 +18,8 @@ struct RecordEditorView: View {
     @State private var showCamera = false
     @State private var photoCount = 0
     @State private var isSaving = false
+
+    var isEditing: Bool { existingRecord != nil }
 
     var body: some View {
         NavigationStack {
@@ -78,7 +81,7 @@ struct RecordEditorView: View {
                     Text("照片")
                 }
             }
-            .navigationTitle("新建记录")
+            .navigationTitle(isEditing ? "编辑记录" : "新建记录")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -99,34 +102,55 @@ struct RecordEditorView: View {
                 }
             }
             #endif
+            .onAppear(perform: loadExisting)
         }
+    }
+
+    private func loadExisting() {
+        guard let record = existingRecord else { return }
+        title = record.title
+        recordDescription = record.recordDescription ?? ""
+        timestamp = record.timestamp
+        locationName = record.locationName ?? ""
     }
 
     private func save() {
         isSaving = true
-        let record = TravelRecord(title: title, sortOrder: travel.records.count)
-        record.recordDescription = recordDescription.isEmpty ? nil : recordDescription
-        record.timestamp = timestamp
-        record.locationName = locationName.isEmpty ? nil : locationName
-        record.travel = travel
-        modelContext.insert(record)
+
+        if let record = existingRecord {
+            record.title = title
+            record.recordDescription = recordDescription.isEmpty ? nil : recordDescription
+            record.timestamp = timestamp
+            record.locationName = locationName.isEmpty ? nil : locationName
+        }
 
         Task {
-            // Library photos
+            let targetRecord: TravelRecord
+            if let existing = existingRecord {
+                targetRecord = existing
+            } else {
+                guard let travel else { dismiss(); return }
+                let newRecord = TravelRecord(title: title, sortOrder: travel.records.count)
+                newRecord.recordDescription = recordDescription.isEmpty ? nil : recordDescription
+                newRecord.timestamp = timestamp
+                newRecord.locationName = locationName.isEmpty ? nil : locationName
+                newRecord.travel = travel
+                modelContext.insert(newRecord)
+                targetRecord = newRecord
+            }
+
             for item in selectedPhotoItems {
                 guard let data = try? await item.loadTransferable(type: Data.self),
                       let path = try? FileStorageManager.shared.saveOriginal(imageData: data) else { continue }
                 let photo = PhotoItem(originalImagePath: path)
-                photo.record = record
+                photo.record = targetRecord
                 modelContext.insert(photo)
                 populateMetadata(for: photo)
             }
-
-            // Camera capture
             if let data = capturedImageData,
                let path = try? FileStorageManager.shared.saveOriginal(imageData: data) {
                 let photo = PhotoItem(originalImagePath: path)
-                photo.record = record
+                photo.record = targetRecord
                 modelContext.insert(photo)
                 populateMetadata(for: photo)
             }
@@ -149,20 +173,16 @@ struct RecordEditorView: View {
         photo.imageWidth = exif.width
         photo.imageHeight = exif.height
 
-        // Auto-fill location from EXIF if user didn't set one
         if locationName.isEmpty, let lat = exif.latitude, let lon = exif.longitude {
             photo.latitude = lat
             photo.longitude = lon
             Task.detached {
                 if let name = await LocationService.shared.reverseGeocode(latitude: lat, longitude: lon) {
-                    await MainActor.run {
-                        photo.locationName = name
-                    }
+                    await MainActor.run { photo.locationName = name }
                 }
             }
         }
 
-        // Generate thumbnail
         if let thumbPath = try? FileStorageManager.shared.generateThumbnail(for: photo.originalImagePath) {
             photo.thumbnailImagePath = thumbPath
         }
@@ -178,5 +198,5 @@ struct RecordEditorView: View {
 }
 
 #Preview {
-    RecordEditorView(travel: Travel(title: "预览旅行"))
+    RecordEditorView(travel: Travel(title: "预览"))
 }
