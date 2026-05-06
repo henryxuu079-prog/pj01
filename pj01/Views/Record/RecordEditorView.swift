@@ -13,6 +13,10 @@ struct RecordEditorView: View {
     @State private var timestamp: Date?
     @State private var locationName = ""
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var capturedImageData: Data?
+    @State private var showCamera = false
+    @State private var photoCount = 0
+    @State private var isSaving = false
 
     var body: some View {
         NavigationStack {
@@ -33,10 +37,45 @@ struct RecordEditorView: View {
                 Section("地点") {
                     TextField("地点名称", text: $locationName)
                 }
-                Section("照片") {
-                    PhotosPicker(selection: $selectedPhotoItems, matching: .images) {
-                        Label("选择照片", systemImage: "photo.on.rectangle.angled")
+                Section {
+                    HStack(spacing: 16) {
+                        PhotosPicker(
+                            selection: $selectedPhotoItems,
+                            maxSelectionCount: 0,
+                            matching: .images
+                        ) {
+                            Label("相册", systemImage: "photo.on.rectangle.angled")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .onChange(of: selectedPhotoItems) { _, _ in
+                            photoCount = selectedPhotoItems.count
+                        }
+
+                        #if os(iOS)
+                        Button {
+                            showCamera = true
+                        } label: {
+                            Label("拍照", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        #endif
                     }
+                    .buttonStyle(.plain)
+
+                    if photoCount > 0 {
+                        Text("已选择 \(photoCount) 张照片")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if capturedImageData != nil {
+                        Text("已拍摄 1 张照片")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("照片")
                 }
             }
             .navigationTitle("新建记录")
@@ -46,13 +85,25 @@ struct RecordEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
-                        .disabled(title.isEmpty)
+                        .disabled(title.isEmpty || isSaving)
                 }
             }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPickerView(capturedImageData: $capturedImageData)
+                    .ignoresSafeArea()
+            }
+            .onChange(of: capturedImageData) { _, _ in
+                if capturedImageData != nil {
+                    photoCount += 1
+                }
+            }
+            #endif
         }
     }
 
     private func save() {
+        isSaving = true
         let record = TravelRecord(title: title, sortOrder: travel.records.count)
         record.recordDescription = recordDescription.isEmpty ? nil : recordDescription
         record.timestamp = timestamp
@@ -61,16 +112,68 @@ struct RecordEditorView: View {
         modelContext.insert(record)
 
         Task {
+            // Library photos
             for item in selectedPhotoItems {
                 guard let data = try? await item.loadTransferable(type: Data.self),
                       let path = try? FileStorageManager.shared.saveOriginal(imageData: data) else { continue }
                 let photo = PhotoItem(originalImagePath: path)
                 photo.record = record
                 modelContext.insert(photo)
+                populateMetadata(for: photo)
+            }
+
+            // Camera capture
+            if let data = capturedImageData,
+               let path = try? FileStorageManager.shared.saveOriginal(imageData: data) {
+                let photo = PhotoItem(originalImagePath: path)
+                photo.record = record
+                modelContext.insert(photo)
+                populateMetadata(for: photo)
+            }
+
+            dismiss()
+        }
+    }
+
+    private func populateMetadata(for photo: PhotoItem) {
+        let imageURL = FileStorageManager.shared.url(for: photo.originalImagePath)
+        let exif = ImageProcessingService.shared.extractEXIF(from: imageURL)
+
+        photo.takenDate = exif.takenDate
+        photo.cameraModel = exif.cameraModel
+        photo.lensModel = exif.lensModel
+        photo.focalLength = exif.focalLength.map { String(format: "%.0fmm", $0) }
+        photo.aperture = exif.aperture.map { String(format: "f/%.1f", $0) }
+        photo.shutterSpeed = exif.shutterSpeed.map { formatShutterSpeed($0) }
+        photo.iso = exif.iso
+        photo.imageWidth = exif.width
+        photo.imageHeight = exif.height
+
+        // Auto-fill location from EXIF if user didn't set one
+        if locationName.isEmpty, let lat = exif.latitude, let lon = exif.longitude {
+            photo.latitude = lat
+            photo.longitude = lon
+            Task.detached {
+                if let name = await LocationService.shared.reverseGeocode(latitude: lat, longitude: lon) {
+                    await MainActor.run {
+                        photo.locationName = name
+                    }
+                }
             }
         }
 
-        dismiss()
+        // Generate thumbnail
+        if let thumbPath = try? FileStorageManager.shared.generateThumbnail(for: photo.originalImagePath) {
+            photo.thumbnailImagePath = thumbPath
+        }
+    }
+
+    private func formatShutterSpeed(_ value: Double) -> String {
+        if value < 1 {
+            "1/\(Int(1.0 / value))"
+        } else {
+            String(format: "%.1f\"", value)
+        }
     }
 }
 

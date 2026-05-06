@@ -20,11 +20,11 @@ struct TravelEditorView: View {
                     DatePicker("开始日期", selection: Binding(
                         get: { startDate ?? Date() },
                         set: { startDate = $0 }
-                    ))
+                    ), displayedComponents: .date)
                     DatePicker("结束日期", selection: Binding(
                         get: { endDate ?? Date() },
                         set: { endDate = $0 }
-                    ))
+                    ), displayedComponents: .date)
                 }
                 Section("概述") {
                     TextEditor(text: $summary)
