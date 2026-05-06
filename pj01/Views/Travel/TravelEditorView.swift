@@ -31,6 +31,7 @@ struct TravelEditorView: View {
                         .frame(minHeight: 100)
                 }
             }
+            .datePickerStyle(.graphical)
             .navigationTitle("新建旅行")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

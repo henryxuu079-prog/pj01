@@ -39,6 +39,7 @@ final class PhotoItem {
     var posterTextColorHex: String?
     var posterTextPosition: String?
     var posterFrameStyle: String?
+    var isPoster: Bool = false
 
     var createdAt: Date
 

@@ -83,9 +83,6 @@ struct PosterCanvasView: View {
     }
 
     private var loadedImage: Image? {
-        if let thumbPath = photo.thumbnailImagePath {
-            return FileStorageManager.shared.loadImage(from: thumbPath)
-        }
-        return FileStorageManager.shared.loadImage(from: photo.originalImagePath)
+        FileStorageManager.shared.loadImage(from: photo.originalImagePath)
     }
 }
